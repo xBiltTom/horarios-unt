@@ -299,7 +299,7 @@ export default function AsignacionesPage() {
                 <div className="flex gap-4 p-4 border-b border-border bg-zinc-50 dark:bg-zinc-900/50">
                     <div className="w-64 space-y-1.5">
                         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">Periodo Académico</label>
-                        <Select value={pcSemestre} onValueChange={(v) => { setPcSemestre(v); setPcCiclo(""); }}>
+                        <Select value={pcSemestre} onValueChange={(v) => { setPcSemestre(v ?? ""); setPcCiclo(""); }}>
                             <SelectTrigger className="h-9 bg-white"><SelectValue placeholder="Seleccionar periodo" /></SelectTrigger>
                             <SelectContent>
                                 {semestres.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.anio}-{s.numero}</SelectItem>)}
@@ -308,7 +308,7 @@ export default function AsignacionesPage() {
                     </div>
                     <div className="w-80 space-y-1.5">
                         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">Carrera Profesional</label>
-                        <Select value={pcEscuela} onValueChange={setPcEscuela}>
+                        <Select value={pcEscuela} onValueChange={(v) => setPcEscuela(v ?? "")}>
                             <SelectTrigger className="h-9 bg-white"><SelectValue placeholder="Seleccionar carrera" /></SelectTrigger>
                             <SelectContent>
                                 {escuelas.map(e => <SelectItem key={e.id} value={e.id.toString()}>{e.nombre}</SelectItem>)}
@@ -325,7 +325,7 @@ export default function AsignacionesPage() {
                             </div>
                             <div className="space-y-1.5">
                                 <label className="block text-xs font-medium text-zinc-500">Currícula</label>
-                                <Select value={pcCurricula} onValueChange={setPcCurricula} disabled={!pcEscuela}>
+                                <Select value={pcCurricula} onValueChange={(v) => setPcCurricula(v ?? "")} disabled={!pcEscuela}>
                                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas las currículas" /></SelectTrigger>
                                     <SelectContent>
                                         {pcCurriculas.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>)}
@@ -334,7 +334,7 @@ export default function AsignacionesPage() {
                             </div>
                             <div className="space-y-1.5">
                                 <label className="block text-xs font-medium text-zinc-500">Ciclo Académico</label>
-                                <Select value={pcCiclo} onValueChange={setPcCiclo}>
+                                <Select value={pcCiclo} onValueChange={(v) => setPcCiclo(v ?? "")}>
                                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos los ciclos" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="">Todos</SelectItem>

@@ -19,6 +19,8 @@ LECTIVA_TIPOS = {TipoBloqueEnum.teoria, TipoBloqueEnum.practica, TipoBloqueEnum.
 NO_LECTIVA_TIPOS = {
     TipoBloqueEnum.preparacion, TipoBloqueEnum.consejeria, TipoBloqueEnum.investigacion,
     TipoBloqueEnum.rsu, TipoBloqueEnum.asesoria, TipoBloqueEnum.capacitacion,
+    TipoBloqueEnum.actividades_gobierno, TipoBloqueEnum.actividades_administracion,
+    TipoBloqueEnum.comites_comisiones,
 }
 from ws_manager import manager as ws_manager
 from auto_fill import populate_auto_fill
@@ -163,6 +165,7 @@ def get_mi_turno(
             en_cola=False, estado=None, orden=None,
             turno_inicio=None, turno_fin=None,
             es_mi_turno=False, tiempo_restante_segundos=None,
+            fase_estado=None,
         )
 
     cola = (
@@ -175,6 +178,7 @@ def get_mi_turno(
             en_cola=False, estado=None, orden=None,
             turno_inicio=None, turno_fin=None,
             es_mi_turno=False, tiempo_restante_segundos=None,
+            fase_estado=fase.estado.value,
         )
 
     es_mi_turno = cola.estado == EstadoColaEnum.activo
@@ -192,6 +196,7 @@ def get_mi_turno(
         turno_fin=cola.turno_fin,
         es_mi_turno=es_mi_turno,
         tiempo_restante_segundos=tiempo_restante,
+        fase_estado=fase.estado.value,
     )
 
 
@@ -377,16 +382,10 @@ async def crear_bloque_no_lectiva(
 
     if current.rol == RolEnum.docente:
         fase = db.query(FaseHorario).filter(FaseHorario.semestre_id == semestre.id).first()
-        if not fase:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No hay una fase de horarios iniciada")
-        cola = db.query(ColaHorario).filter(
-            ColaHorario.fase_id == fase.id,
-            ColaHorario.docente_id == docente_id,
-        ).first()
-        if not cola or cola.estado != EstadoColaEnum.completado:
+        if not fase or fase.estado != EstadoFaseEnum.completado:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Solo puedes asignar carga no lectiva despues de completar tu turno",
+                detail="La fase de horarios debe estar completada para asignar carga no lectiva",
             )
 
     if data.hora_inicio >= data.hora_fin:
@@ -454,18 +453,18 @@ async def eliminar_bloque(
     if current.rol == RolEnum.docente:
         semestre = _active_semestre(db)
         fase = db.query(FaseHorario).filter(FaseHorario.semestre_id == semestre.id).first()
-        cola = None
-        if fase:
-            cola = db.query(ColaHorario).filter(
-                ColaHorario.fase_id == fase.id,
-                ColaHorario.docente_id == docente_id,
-            ).first()
         if bloque.tipo in LECTIVA_TIPOS:
+            cola = None
+            if fase:
+                cola = db.query(ColaHorario).filter(
+                    ColaHorario.fase_id == fase.id,
+                    ColaHorario.docente_id == docente_id,
+                ).first()
             if not cola or cola.estado != EstadoColaEnum.activo:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No es tu turno")
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No es tu turno para modificar bloques lectivos")
         else:
-            if not cola or cola.estado != EstadoColaEnum.completado:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo puedes eliminar carga no lectiva despues de completar tu turno")
+            if not fase or fase.estado != EstadoFaseEnum.completado:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="La fase lectiva debe estar completada para modificar carga no lectiva")
 
     db.delete(bloque)
     db.commit()
@@ -524,6 +523,15 @@ async def auto_fill_endpoint(
     semestre = _active_semestre(db)
     
     db.query(BloqueHorario).filter(BloqueHorario.semestre_id == semestre.id).delete()
+    
+    fase = db.query(FaseHorario).filter(FaseHorario.semestre_id == semestre.id).first()
+    if fase:
+        db.query(ColaHorario).filter(ColaHorario.fase_id == fase.id).delete()
+        fase.estado = EstadoFaseEnum.completado
+    else:
+        fase = FaseHorario(semestre_id=semestre.id, estado=EstadoFaseEnum.completado)
+        db.add(fase)
+
     db.commit()
     
     try:

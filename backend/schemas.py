@@ -479,6 +479,7 @@ class MiTurnoResponse(BaseModel):
     turno_fin: datetime | None
     es_mi_turno: bool
     tiempo_restante_segundos: int | None
+    fase_estado: str | None = None
 
 # ---------------------------------------------------------------------------
 # Carga No Lectiva

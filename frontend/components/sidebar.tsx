@@ -36,7 +36,8 @@ const secretariaItems = [
 
 const docenteItems = [
   { href: "/docente/horario", label: "Mi horario" },
-  { href: "/docente/declaracion", label: "Declaración Jurada" }
+  { href: "/docente/declaracion", label: "Declaración Jurada" },
+  { href: "/docente/reportes", label: "Reportes y Descargas" }
 ];
 
 // ---------------------------------------------------------------------------

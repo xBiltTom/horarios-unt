@@ -77,8 +77,8 @@ interface Asignacion { id: number; curso: CursoInfo; dicta_teoria: boolean; dict
 interface CargaNoLectiva { id: number; rubro: string; horas_asignadas: number }
 interface Aula { id: number; nombre: string; ubicacion?: string }
 interface Bloque { id: number; docente_id: number; tipo: string; dia: string; hora_inicio: string; hora_fin: string; asignacion_id: number | null; turno_laboratorio_id: number | null; laboratorio_id: number | null; aula_id: number | null }
-interface MiTurno { en_cola: boolean; estado: string | null; orden: number | null; turno_inicio: string | null; turno_fin: string | null; es_mi_turno: boolean; tiempo_restante_segundos: number | null }
-interface ScheduleItem { id: string; tipo: string; label: string; duracion: number; curso_id?: number; asignacion_id?: number; turno_laboratorio_id?: number; laboratorio_id?: number }
+interface MiTurno { en_cola: boolean; estado: string | null; orden: number | null; turno_inicio: string | null; turno_fin: string | null; es_mi_turno: boolean; tiempo_restante_segundos: number | null; fase_estado: string | null; }
+interface ScheduleItem { id: string; tipo: string; label: string; duracion: number; curso_id?: number; asignacion_id?: number; turno_laboratorio_id?: number; laboratorio_id?: number; isPlaced?: boolean; }
 interface PendingPlacement { dia: string; hora: number; item: ScheduleItem }
 type BlockColors = { bg: string; text: string; border: string };
 
@@ -253,10 +253,7 @@ export default function DocenteHorarioPage() {
   const [activeItem, setActiveItem] = useState<ScheduleItem | null>(null);
   const [blockedStartHoras, setBlockedStartHoras] = useState<Set<string>>(new Set());
   const [pendingPlacement, setPendingPlacement] = useState<PendingPlacement | null>(null);
-  const [cargaForm, setCargaForm] = useState<Record<RubroNL, string>>(EMPTY_CARGA);
-  const [savingCarga, setSavingCarga] = useState(false);
-  const [cargaErr, setCargaErr] = useState<string | null>(null);
-  const [cargaOk, setCargaOk] = useState(false);
+
 
   const wsRef = useRef<WebSocket | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -290,9 +287,6 @@ export default function DocenteHorarioPage() {
         if (asigRes.status === "fulfilled") setAsignaciones(asigRes.value);
         if (cargaRes.status === "fulfilled") {
           setCargaNoLectiva(cargaRes.value);
-          const form = { ...EMPTY_CARGA };
-          for (const c of cargaRes.value) form[c.rubro as RubroNL] = c.horas_asignadas.toString();
-          setCargaForm(form);
         }
         if (bloquesRes.status === "fulfilled") setBloques(bloquesRes.value);
         if (turnoRes.status === "fulfilled") setMiTurno(turnoRes.value);
@@ -348,11 +342,19 @@ export default function DocenteHorarioPage() {
   }
   for (const carga of cargaNoLectiva) {
     if (carga.horas_asignadas > 0) {
-      scheduleItems.push({ id: `carga-${carga.rubro}`, tipo: carga.rubro, label: `${TIPO_LABEL[carga.rubro] ?? carga.rubro} (${carga.horas_asignadas}h)`, duracion: carga.horas_asignadas });
+      const horasColocadas = misBloques.filter(b => b.tipo === carga.rubro).reduce((sum, b) => sum + (parseHora(b.hora_fin) - parseHora(b.hora_inicio)), 0);
+      const horasPendientes = carga.horas_asignadas - horasColocadas;
+      for (let i = 0; i < horasPendientes; i++) {
+        scheduleItems.push({ id: `carga-${carga.rubro}-pend-${i}`, tipo: carga.rubro, label: `${TIPO_LABEL[carga.rubro] ?? carga.rubro} (1h)`, duracion: 1, isPlaced: false });
+      }
+      for (let i = 0; i < horasColocadas; i++) {
+        scheduleItems.push({ id: `carga-${carga.rubro}-col-${i}`, tipo: carga.rubro, label: `${TIPO_LABEL[carga.rubro] ?? carga.rubro} (1h)`, duracion: 1, isPlaced: true });
+      }
     }
   }
 
   function isItemPlaced(item: ScheduleItem): boolean {
+    if (item.isPlaced !== undefined) return item.isPlaced;
     if (item.tipo === "teoria") return misBloques.some((b) => b.tipo === "teoria" && b.asignacion_id === item.asignacion_id);
     if (item.tipo === "practica") return misBloques.some((b) => b.tipo === "practica" && b.asignacion_id === item.asignacion_id);
     if (item.tipo === "laboratorio") return misBloques.some((b) => b.tipo === "laboratorio" && b.turno_laboratorio_id === item.turno_laboratorio_id);
@@ -483,31 +485,7 @@ export default function DocenteHorarioPage() {
     }
   }
 
-  async function handleSaveCarga() {
-    if (!docenteInfo) return;
-    try {
-      setSavingCarga(true);
-      setCargaErr(null);
-      const rubros = rubrosActivos
-        .map((r) => ({ rubro: r, horas_asignadas: parseInt(cargaForm[r]) || 0 }))
-        .filter((r) => r.horas_asignadas > 0);
-      await apiFetch("/api/carga-no-lectiva", {
-        method: "POST",
-        body: JSON.stringify({ docente_id: docenteInfo.id, rubros }),
-      });
-      const fresh = await apiFetch<CargaNoLectiva[]>(`/api/carga-no-lectiva/docente/${docenteInfo.id}`);
-      setCargaNoLectiva(fresh);
-      const form = { ...EMPTY_CARGA };
-      for (const c of fresh) form[c.rubro as RubroNL] = c.horas_asignadas.toString();
-      setCargaForm(form);
-      setCargaOk(true);
-      setTimeout(() => setCargaOk(false), 2500);
-    } catch (e) {
-      setCargaErr(e instanceof Error ? e.message : "Error al guardar carga");
-    } finally {
-      setSavingCarga(false);
-    }
-  }
+
 
   async function handleConfirmar() {
     setConfirmando(true);
@@ -527,6 +505,7 @@ export default function DocenteHorarioPage() {
 
   const esMiTurno = miTurno?.es_mi_turno ?? false;
   const turnoCompletado = miTurno?.estado === "completado";
+  const faseCompletada = miTurno?.fase_estado === "completado";
   const confirmDisabled = confirmando || lectivaPendientes.length > 0;
   const dragActive = activeItem !== null;
 
@@ -583,9 +562,9 @@ export default function DocenteHorarioPage() {
                 Durante tu turno solo puedes asignar tu carga lectiva. Podras completar tu carga no lectiva despues.
               </div>
             )}
-            {turnoCompletado && (
+            {faseCompletada && (
               <div className="mx-2.5 mt-2.5 text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/8 border border-emerald-200 dark:border-emerald-500/20 rounded-[4px] px-2 py-1.5 leading-relaxed">
-                Tu turno finalizo. Ahora puedes declarar y asignar tu carga no lectiva cuando quieras.
+                La fase de horarios lectivos ha finalizado. Ahora puedes acomodar en la grilla las horas de tu Declaración Jurada No Lectiva.
               </div>
             )}
 
@@ -627,37 +606,10 @@ export default function DocenteHorarioPage() {
               <p className="px-3 py-3 text-[10px] text-zinc-500">Sin carga lectiva asignada</p>
             )}
 
-            {turnoCompletado && (
+            {faseCompletada && (
               <>
                 <div className="px-3 py-2 border-t border-b border-black/[0.05] dark:border-white/6 mt-2 flex items-center justify-between">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-400 dark:text-zinc-600">No Lectiva</p>
-                  {cargaOk && <span className="text-[10px] text-emerald-500 font-medium">Guardado</span>}
-                </div>
-
-                <div className="px-2.5 pt-2 pb-2 space-y-2">
-                  {rubrosActivos.map((r) => (
-                    <div key={r}>
-                      <label className="text-[10px] text-zinc-500 dark:text-zinc-400 block mb-0.5 truncate">
-                        {RUBRO_LABEL_NL[r]} (max {limits[r]}h)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={limits[r]}
-                        value={cargaForm[r]}
-                        onChange={(e) => setCargaForm((prev) => ({ ...prev, [r]: e.target.value }))}
-                        className="w-full h-7 bg-white dark:bg-zinc-900 border border-input rounded-[4px] px-2 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-600/60 focus:border-indigo-600/60 transition-colors duration-150"
-                      />
-                    </div>
-                  ))}
-                  {cargaErr && <p className="text-[10px] text-red-400">{cargaErr}</p>}
-                  <button
-                    onClick={handleSaveCarga}
-                    disabled={savingCarga}
-                    className="w-full h-7 text-[10px] font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-[4px] transition-colors duration-150 active:scale-[0.98] disabled:opacity-50 mt-0.5"
-                  >
-                    {savingCarga ? "Guardando..." : "Declarar horas"}
-                  </button>
                 </div>
 
                 {noLectivaPendientes.length > 0 && (
@@ -690,32 +642,12 @@ export default function DocenteHorarioPage() {
               </>
             )}
 
-            {turnoCompletado && docenteInfo && (
-              <div className="border-t border-black/[0.05] dark:border-white/6 px-2.5 py-2.5 space-y-1.5 mt-auto">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-400 dark:text-zinc-600 px-0.5 mb-1.5">Descargas</p>
-                {[
-                  { label: "Mi horario PDF", url: `/api/documentos/mi-horario/${docenteInfo.id}/pdf`, ext: "pdf" },
-                  { label: "Mi horario Excel", url: `/api/documentos/mi-horario/${docenteInfo.id}/excel`, ext: "xlsx" },
-                  { label: "Declaración Carga Word", url: `/api/documentos/declaracion/${docenteInfo.id}/word`, ext: "docx" },
-                  { label: "Declaración Carga PDF", url: `/api/documentos/declaracion/${docenteInfo.id}/pdf`, ext: "pdf" },
-                  { label: "Declaración Jurada Word", url: `/api/documentos/declaracion-jurada/${docenteInfo.id}/word`, ext: "docx" },
-                  { label: "Declaración Jurada PDF", url: `/api/documentos/declaracion-jurada/${docenteInfo.id}/pdf`, ext: "pdf" },
-                ].map(({ label, url, ext }) => (
-                  <button
-                    key={url}
-                    onClick={() => downloadBlob(url, `${label.toLowerCase().replace(/\s+/g, "-")}.${ext}`)}
-                    className="w-full text-left text-[10px] px-2 py-1.5 rounded-[4px] bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors duration-150 truncate"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
+
           </aside>
 
           {/* Grid */}
           <main className="flex-1 overflow-auto p-4">
-            {!esMiTurno && !turnoCompletado && miTurno?.en_cola && (
+            {!esMiTurno && !faseCompletada && miTurno?.en_cola && (
               <div className="mb-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-[5px] px-4 py-2.5">
                 Vista de solo lectura hasta que sea tu turno.
               </div>
@@ -794,7 +726,7 @@ export default function DocenteHorarioPage() {
                 const colors = getBlockColors(bloque.tipo, bloque.asignacion_id, asignaciones);
                 const label = TIPO_LABEL[bloque.tipo] ?? bloque.tipo;
                 const isLectiva = LECTIVA_TIPOS.has(bloque.tipo);
-                const canDelete = (esMiTurno && isLectiva) || (turnoCompletado && !isLectiva);
+                const canDelete = (esMiTurno && isLectiva) || (faseCompletada && !isLectiva);
                 return (
                   <div
                     key={`mio-${index}-${bloque.id}`}

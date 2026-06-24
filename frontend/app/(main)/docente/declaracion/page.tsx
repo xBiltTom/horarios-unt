@@ -230,14 +230,12 @@ export default function DeclaracionPage() {
       {/* FORMATO IMPRIMIBLE */}
       <div className="print-container bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 p-0 sm:p-8 rounded-xl shadow-sm border border-border print:bg-white print:text-black print:shadow-none print:border-none print:p-0">
         
-        {(step === "view_lectiva" || step === "summary") && (
-          <>
-            {/* Cabecera */}
-            <div className="border-b-2 border-indigo-600 dark:border-indigo-500 pb-4 mb-6 print:border-blue-800">
-              <h2 className="text-xl font-bold text-center text-indigo-700 dark:text-indigo-400 uppercase print:text-blue-900">
-                Carga Horaria - Declaración de Carga Horaria Asignada
-              </h2>
-            </div>
+        {/* Cabecera */}
+        <div className="border-b-2 border-indigo-600 dark:border-indigo-500 pb-4 mb-6 print:border-blue-800">
+          <h2 className="text-xl font-bold text-center text-indigo-700 dark:text-indigo-400 uppercase print:text-blue-900">
+            Carga Horaria - Declaración de Carga Horaria Asignada
+          </h2>
+        </div>
 
             {/* Datos Personales */}
             <div className="mb-6 text-sm">
@@ -247,6 +245,8 @@ export default function DeclaracionPage() {
                 <div>Ingeniería</div>
                 <div className="font-semibold">DPTO. ACADÉMICO:</div>
                 <div>Ingeniería de Sistemas</div>
+                <div className="font-semibold">FECHA:</div>
+                <div>{new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
               </div>
               <table className="w-full mt-4 text-center border-collapse border border-border print:border-blue-200">
                 <thead>
@@ -313,8 +313,6 @@ export default function DeclaracionPage() {
             </tfoot>
           </table>
         </div>
-        </>
-        )}
 
         {step === "view_lectiva" && (
           <div className="mt-8 flex justify-center print:hidden border-t border-border pt-6">
